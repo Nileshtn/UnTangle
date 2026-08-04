@@ -38,8 +38,8 @@ class FileManager:
 
     def add_db_identifier(self, identifier):
         for id in identifier:
-            if identifier.name not in self.db_identifiers['docs']:
-                self.db_identifiers['docs'].append(identifier.name)
+            if id.name not in self.db_identifiers['docs']:
+                self.db_identifiers['docs'].append(id.name)
                 self.save_db_identifiers()
 
     def save_db_identifiers(self):
@@ -58,6 +58,7 @@ class VectorStoreManager:
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         self.vectorstore = Chroma(persist_directory=self.vectorstore_path, embedding_function=self.embeddings)
+        self.retriever = None
 
     def add_documents(self, documents_path_list):
         # for document in documents_path_list
@@ -102,6 +103,9 @@ class VectorStoreManager:
 
 
 class DocLLM:
+    """
+    manages the llm call and chain
+    """
     def __init__(self, model_name="ollama", temperature=0.2):
         self.model_name = model_name
         self.temperature = temperature
@@ -121,5 +125,6 @@ class DocLLM:
     def chat(self, query):
         if self.chain is None:
             print("need to init chain first call llm.init_chain(retriever) first")
+            return
         response = self.chain.invoke(query)
         return response.content
