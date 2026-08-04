@@ -1,43 +1,31 @@
 import streamlit as st
+from utils.core import *
+from pypdf import PdfReader
 
-st.set_page_config(page_title="DocChat App", layout="wide")
-st.title("Chat with your Documents")
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+def file_processor(file_manager: FileManager, db : VectorStoreManager,  uploaded_files : list):
+    file_manager.get_files(uploaded_files)
+    with st.status("Processing documents...", expanded=True) as status:
+        db.add_documents(uploaded_files)
+        file_manager.add_db_identifier(uploaded_files)
+        status.update(label="Files processed successfully!", state="complete", expanded=False)
 
-if "document_context" not in st.session_state:
-    st.session_state.document_context = None 
-with st.sidebar:
-    st.header("Upload a Document")
-    uploaded_file = st.file_uploader("Choose a file", type=["txt", "pdf", "csv"])
+if __name__ == "__main__":
+    llm = DocLLM("gemma4:31b-cloud")
+    file_manager = FileManager()
+    db_manager = VectorStoreManager('db')
+
+
+    st.title('DocLLM', text_alignment="center")
+    with st.sidebar:
+        st.title("Document LLM")
+        uploaded_files = st.file_uploader("Choose a file", 
+                                        accept_multiple_files=True, 
+                                        type=["pdf", "txt"])
+
+        st.button("process files", on_click=file_processor, args=(file_manager, db_manager, uploaded_files))
+   
+
+
+    mesg = st.chat_input("Ask a question about your document")
     
-    if uploaded_file is not None:
-        if st.button("Process File"):
-            try:
-                file_bytes = uploaded_file.getvalue()
-                result = "worked"
-                
-                st.session_state.document_context = result
-                st.success("File processed and ready for chat!")
-            except Exception as e:
-                st.error(f"Error processing file: {e}")
-
-st.header("2. Chat")
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-if prompt := st.chat_input("Ask a question about your document..."):
-    
-    with st.chat_message("user"):
-        st.markdown(prompt)
-        
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    with st.chat_message("assistant"):
-        response = "This is a placeholder response."
-        st.markdown(response)
-        
-    st.session_state.messages.append({"role": "assistant", "content": response})
