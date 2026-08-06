@@ -5,12 +5,16 @@ template : |
     DOCUMENT:
     {context}
 
+    CHAT HISTORY:
+    {chat_history}
+
     USER INPUT:
     {query}
 
     RULE:
     - If the question is not related to the context/Document give, say the user to attach relavent document or ask question on the attached document.
     - Start your response directly with the first bullet point.
+    - if you have chat history available you can try to help users with those informations too.
     - Do NOT include introductory phrases, conversational filler, or restatements of the query (e.g., "Based on the text...", "Here is...", "Skip connections are used...").
     - Output ONLY a markdown bulleted list.
 
