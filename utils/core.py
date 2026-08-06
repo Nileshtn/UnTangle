@@ -1,6 +1,8 @@
 import os
 import tempfile
 import yaml
+from pathlib import Path
+
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
@@ -8,20 +10,19 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 
-import streamlit as st
-
-
+import chainlit as cl
 
 class FileManager:
     def __init__(self, db_identifier_path='db_identifier.yaml'):
         self.db_identifier_path = db_identifier_path
-        self.doc_store_path = []
-        self.available_files = []
+        self.available_files:list[cl.File] = []
         self._load_db_identifiers()
 
-    def get_files(self, files_path):
-        self.available_files = [file.name for file in files_path if not self.is_identifier_exists(file.name)]
-        print(self.available_files)
+    def clean_available(self):
+        self.available_files = []
+
+    def get_files(self, elements):
+        self.available_files = [element for element in elements if not self.is_identifier_exists(element.name)]
 
     def _load_db_identifiers(self):
         with open(self.db_identifier_path, 'r') as file:
@@ -37,10 +38,9 @@ class FileManager:
         return True if identifier in self.db_identifiers.get('docs', []) else False
 
     def add_db_identifier(self, identifier):
-        for id in identifier:
-            if id.name not in self.db_identifiers['docs']:
-                self.db_identifiers['docs'].append(id.name)
-                self.save_db_identifiers()
+        if identifier not in self.db_identifiers['docs']:
+            self.db_identifiers['docs'].append(identifier)
+            self.save_db_identifiers()
 
     def save_db_identifiers(self):
         with open(self.db_identifier_path, 'w') as file:
@@ -48,8 +48,6 @@ class FileManager:
 
     def get_file_paths(self):
         return [os.path.join(self.doc_store_path, file) for file in self.available_files]
-
-
 
 class VectorStoreManager:
     def __init__(self, db_identifier):
@@ -60,43 +58,33 @@ class VectorStoreManager:
         self.vectorstore = Chroma(persist_directory=self.vectorstore_path, embedding_function=self.embeddings)
         self.retriever = None
 
-    def add_documents(self, documents_path_list):
-        # for document in documents_path_list
-        for document_path in documents_path_list:
-            st.write(f"adding {document_path.name}")
-            if document_path.type == "application/pdf":
-                documents = self.pdf_parser(document_path)
-            elif document_path.type == "text/plain":
-                documents = self.text_parser(document_path)
-            else:
-                raise ValueError(f"Unsupported file type: {document_path}")
-            self.vectorstore.add_documents(documents)
-            st.write(f"completed {document_path.name}")
-            
-        return True
+    def extra_content(self, element):
+        ext = Path(element.name).suffix.lower()
 
-    def init_retriever(self, search_type="mmr",  top_k: int = 3):
-        self.retriever = self.vectorstore.as_retriever(search_type=search_type, search_kwargs={"k": top_k})
-
-    def pdf_parser(self, uploaded_file):
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-            temp_file.write(uploaded_file.getvalue())
-            temp_file_path = temp_file.name
-
-        try:
-            loader = PyPDFLoader(temp_file_path)
-            documents = loader.load()
-            return self.text_splitter.split_documents(documents)
-            
-        finally:
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-
-    def text_parser(self, text_path):
-        loader = TextLoader(text_path)
+        if ext == ".pdf":
+            loader = PyPDFLoader(element.path)
+        elif ext == ".txt":
+            loader = TextLoader(element.path)
+        else:
+            return ext, None
+        
         documents = loader.load()
-        documents = self.text_splitter.split_documents(documents)
-        return documents
+        return ext , self.text_splitter.split_documents(documents)
+
+    async def add_documents(self, elements:list[cl.File]) -> list:
+        pass_list = []
+        for element in elements:
+            ext, content = await cl.make_async(self.extra_content)(element)
+            if content:
+                self.vectorstore.add_documents(content)
+                pass_list.append(True)
+            else:
+                await cl.Message(f"{ext} not supported we are working on that!")
+                pass_list.append(False)
+        return pass_list
+            
+    def init_retriever(self, search_type="mmr",  top_k: int = 3):
+        self.retriever = self.vectorstore.as_retriever(search_type=search_type, search_kwargs={"k": top_k})        
 
     def get_vectorstore(self):
         return self.vectorstore
@@ -111,7 +99,14 @@ class DocLLM:
         self.temperature = temperature
         self.chain = None
         self.mesg = ChatPromptTemplate.from_messages([
-            ("system", "You are a helpful assistant that answers questions based on the provided context only. else say 'I don't know'."),
+            ("system", """
+                        You are a precise data extraction assistant. 
+
+                        OUTPUT FORMAT RULES:
+                        - Start your response directly with the first bullet point.
+                        - Do NOT include introductory phrases, conversational filler, or restatements of the query (e.g., "Based on the text...", "Here is...", "Skip connections are used...").
+                        - Output ONLY a markdown bulleted list.
+                        """),
             ("human", "{context}\n\nQuestion: {query}\nAnswer:")
         ])
         self.chat_model = ChatOllama(model=self.model_name, temperature=self.temperature)
@@ -122,7 +117,7 @@ class DocLLM:
     def init_chain(self, retriever):
         self.chain = {"context": retriever | self.format_docs, "query" : RunnablePassthrough()} | self.mesg | self.chat_model
 
-    def chat(self, query):
+    async def chat(self, query):
         if self.chain is None:
             print("need to init chain first call llm.init_chain(retriever) first")
             return
