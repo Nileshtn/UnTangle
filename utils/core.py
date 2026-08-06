@@ -4,7 +4,7 @@ import yaml
 from pathlib import Path
 
 from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import load_prompt
 from langchain_core.runnables import RunnablePassthrough
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -94,32 +94,27 @@ class DocLLM:
     """
     manages the llm call and chain
     """
-    def __init__(self, model_name="ollama", temperature=0.2):
+    def __init__(self, model_name="gemma4:31b-cloud", temperature=0.2, prompt_path="prompts/rag_prompt.yaml"):
         self.model_name = model_name
         self.temperature = temperature
         self.chain = None
-        self.mesg = ChatPromptTemplate.from_messages([
-            ("system", """
-                        You are a precise data extraction assistant. 
-
-                        OUTPUT FORMAT RULES:
-                        - Start your response directly with the first bullet point.
-                        - Do NOT include introductory phrases, conversational filler, or restatements of the query (e.g., "Based on the text...", "Here is...", "Skip connections are used...").
-                        - Output ONLY a markdown bulleted list.
-                        """),
-            ("human", "{context}\n\nQuestion: {query}\nAnswer:")
-        ])
+        self.mesg = load_prompt(prompt_path)
         self.chat_model = ChatOllama(model=self.model_name, temperature=self.temperature)
 
     def format_docs(self,docs):
             return "\n\n".join(doc.page_content for doc in docs) 
     
     def init_chain(self, retriever):
-        self.chain = {"context": retriever | self.format_docs, "query" : RunnablePassthrough()} | self.mesg | self.chat_model
+        self.chain = ({"context": retriever | self.format_docs, 
+                      "query" : RunnablePassthrough()
+                      }
+                    | self.mesg 
+                    | self.chat_model)
 
-    async def chat(self, query):
+    async def chat(self, query:str, message_placeholder: cl.Message):
         if self.chain is None:
             print("need to init chain first call llm.init_chain(retriever) first")
             return
-        response = self.chain.invoke(query)
-        return response.content
+        async for chunk in self.chain.astream(query):
+            await message_placeholder.stream_token(chunk.content)
+        await message_placeholder.update()

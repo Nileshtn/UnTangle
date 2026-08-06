@@ -30,9 +30,8 @@ async def main(message: cl.Message):
 
     await check_element(message.elements)
 
+    response = cl.Message(content="")
     if message.content and llm.chain:
-        response = await llm.chat(message.content)
-
-        await cl.Message(response).send()
+        await llm.chat(message.content, response)
 
     
