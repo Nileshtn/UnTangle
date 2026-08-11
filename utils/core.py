@@ -3,6 +3,8 @@ import tempfile
 import yaml
 from pathlib import Path
 
+import ollama
+
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_core.prompts import load_prompt
 from langchain_core.runnables import RunnableWithMessageHistory
@@ -100,8 +102,23 @@ class DocLLM:
         self.chain = None
         self.prompt = load_prompt(prompt_path)
         self.chat_model = ChatOllama(model=self.model_name, temperature=self.temperature)
-
         self.store = {}
+
+
+    def get_avalable_models(self) ->list:
+        response = ollama.list()
+
+        chat_models = []
+        for model in response.models:
+            name = model.model.lower()
+            family = getattr(model.details, 'family', '').lower()
+            
+            if not any(keyword in name or keyword in family for keyword in ['embed', 'bge', 'minilm', 'bert']):
+                chat_models.append(model.model)
+
+        return chat_models
+
+
 
     def get_session_history(self, session_id: str):
         if session_id not in self.store:
@@ -130,4 +147,4 @@ class DocLLM:
             return
         async for chunk in self.chain.astream({"query" : query}, {'configurable': {'session_id': 'hello'}}):
             await message_placeholder.stream_token(chunk.content)
-        await message_placeholder.update() 
+        await message_placeholder.update()

@@ -1,10 +1,35 @@
+from typing import Optional
 import chainlit as cl
+from chainlit.input_widget import Select, Slider
 import asyncio
 from utils import *
 
-llm = DocLLM("gemma4:31b-cloud")
-file_manager = FileManager()
-vector_store = VectorStoreManager("chainlit_db")
+
+
+@cl.password_auth_callback
+def auth_callback(username: str, password: str):
+    if (username, password) == ("user", "user"):
+        return cl.User(
+            identifier="admin", metadata={"role": "admin", "provider": "credentials"}
+        )
+    else:
+        return None
+
+@cl.on_chat_start
+async def main():
+    global llm
+    global file_manager
+    global vector_store
+    user = cl.user_session.get("user")
+
+    llm = DocLLM()
+    file_manager = FileManager()
+    vector_store = VectorStoreManager(f"{user}")
+
+    await cl.Message(content="Hello! How can I help you today?").send()
+
+
+
 
 async def check_element(elements : list[cl.File]):
     file_manager.get_files(elements)
@@ -21,6 +46,10 @@ async def check_element(elements : list[cl.File]):
 
     if vector_store.retriever:
         llm.init_chain(vector_store.retriever)
+
+
+# @cl.on_chat_change
+
 
 @cl.on_message
 async def main(message: cl.Message):
