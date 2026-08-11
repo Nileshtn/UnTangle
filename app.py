@@ -5,7 +5,6 @@ import asyncio
 from utils import *
 
 
-
 @cl.password_auth_callback
 def auth_callback(username: str, password: str):
     if (username, password) == ("user", "user"):
@@ -63,4 +62,8 @@ async def main(message: cl.Message):
     if message.content and llm.chain:
         await llm.chat(message.content, response)
 
-    
+
+
+@cl.on_chat_resume
+def on_chat_resume():
+    pass
