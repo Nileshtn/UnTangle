@@ -19,6 +19,7 @@ template : |
     - Output ONLY a markdown bulleted list.
 
     ANSWER:
-input_variable:
+input_variables:
     - "context"
     - "query"
+    - "chat_history"

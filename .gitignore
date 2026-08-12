@@ -8,4 +8,6 @@ test.ipynb
 
 
 chroma_db
+data
 chainlit-datalayer
+db_identifier.yaml
