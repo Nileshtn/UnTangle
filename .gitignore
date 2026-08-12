@@ -1,5 +1,13 @@
 .vscode
-__pycache__
-test.ipynb
-chroma_db
+.env
 .chainlit
+
+__pycache__
+
+test.ipynb
+
+
+chroma_db
+data
+chainlit-datalayer
+db_identifier.yaml
