@@ -180,6 +180,29 @@ class VectorStoreManager:
 
         return []
 
+    def get_documents_grouped(
+        self, source_name: str | None = None
+    ) -> dict[str, list[Document]]:
+        grouped: dict[str, list[Document]] = {}
+
+        for document in self.get_all_documents(source_name=source_name):
+            filename = document.metadata.get("filename")
+            if not filename:
+                source = document.metadata.get("source", "")
+                filename = Path(source).name if source else "unknown"
+
+            grouped.setdefault(filename, []).append(document)
+
+        for filename in grouped:
+            grouped[filename].sort(
+                key=lambda doc: (
+                    doc.metadata.get("page", 0),
+                    str(doc.metadata.get("page_label", "")),
+                )
+            )
+
+        return grouped
+
 
 class DocLLM:
     """Manages the LLM call and RAG chain."""
@@ -358,6 +381,20 @@ class DocLLM:
 
         return list(await asyncio.gather(*(summarize_one(batch) for batch in batches)))
 
+    async def _summarize_document_chunks(self, documents: list[Document]) -> str:
+        batches = self._batch_texts(documents)
+
+        if len(batches) == 1:
+            return await self._summarize_text(batches[0])
+
+        section_summaries = await self._summarize_batches(batches)
+        combined = (
+            "The following are summaries of different sections of the same "
+            "document. Combine them into one coherent summary:\n\n"
+            + "\n\n---\n\n".join(section_summaries)
+        )
+        return await self._summarize_text(combined)
+
     async def _stream_summary(self, text: str, message_placeholder: cl.Message) -> None:
         chain = self.summarize_prompt | self.chat_model
         async for chunk in chain.astream({"context": text}):
@@ -369,28 +406,35 @@ class DocLLM:
         message_placeholder: cl.Message,
         source_name: str | None = None,
     ) -> None:
-        documents = vector_store.get_all_documents(source_name=source_name)
-        if not documents:
+        groups = vector_store.get_documents_grouped(source_name=source_name)
+        if not groups:
             label = source_name or "the uploaded documents"
             raise ValueError(f"No content found for {label}.")
 
-        batches = self._batch_texts(documents)
-        logger.info(
-            "Summarizing %s chunks in %s batch(es)",
-            len(documents),
-            len(batches),
-        )
+        if len(groups) == 1:
+            documents = next(iter(groups.values()))
+            batches = self._batch_texts(documents)
+            logger.info(
+                "Summarizing %s chunks in %s batch(es)",
+                len(documents),
+                len(batches),
+            )
 
-        if len(batches) == 1:
-            await self._stream_summary(batches[0], message_placeholder)
+            if len(batches) == 1:
+                await self._stream_summary(batches[0], message_placeholder)
+            else:
+                summary = await self._summarize_document_chunks(documents)
+                await message_placeholder.stream_token(summary)
+
             await message_placeholder.update()
             return
 
-        section_summaries = await self._summarize_batches(batches)
-        combined = (
-            "The following are summaries of different sections of the same "
-            "document. Combine them into one coherent summary:\n\n"
-            + "\n\n---\n\n".join(section_summaries)
-        )
-        await self._stream_summary(combined, message_placeholder)
+        logger.info("Summarizing %s documents separately", len(groups))
+        for index, (filename, documents) in enumerate(sorted(groups.items())):
+            if index > 0:
+                await message_placeholder.stream_token("\n\n")
+            await message_placeholder.stream_token(f"## {filename}\n\n")
+            summary = await self._summarize_document_chunks(documents)
+            await message_placeholder.stream_token(summary)
+
         await message_placeholder.update()

@@ -100,7 +100,12 @@ async def run_summarize(source_name: str | None = None) -> None:
         ).send()
         return
 
-    title = f"**{source_name}**" if source_name else "your document"
+    title = f"**{source_name}**" if source_name else "your documents"
+    doc_count = len(file_manager.get_db_identifiers())
+    if not source_name and doc_count == 1:
+        title = "your document"
+    elif not source_name and doc_count > 1:
+        title = f"**{doc_count} documents**"
     response = cl.Message(content=f"_Summarizing {title}..._\n\n")
     await response.send()
 
