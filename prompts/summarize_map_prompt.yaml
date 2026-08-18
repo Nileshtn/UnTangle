@@ -1,0 +1,12 @@
+_type: prompt
+template: |
+  Summarize this document section in 4-6 short bullet points.
+  Include only the most important facts, findings, or claims.
+  Do not add intro text or headings.
+
+  SECTION:
+  {context}
+
+  BULLETS:
+input_variables:
+  - "context"

@@ -1,0 +1,19 @@
+_type: prompt
+template: |
+  You are a helpful document analyst. Summarize the following document content clearly and concisely.
+
+  Focus on:
+  - Main topic and purpose
+  - Key points and findings
+  - Important conclusions or recommendations
+
+  Use markdown with headings and bullet points where appropriate.
+  Do NOT include filler phrases like "Here is a summary..." or "Based on the document...".
+  Start directly with the summary content.
+
+  DOCUMENT:
+  {context}
+
+  SUMMARY:
+input_variables:
+  - "context"
