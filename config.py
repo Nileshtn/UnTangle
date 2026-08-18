@@ -14,11 +14,17 @@ class Settings:
     ollama_model: str
     embedding_model: str
     temperature: float
+    ollama_num_predict: int
     chunk_size: int
     chunk_overlap: int
     retriever_top_k: int
     data_dir: Path
     prompt_path: Path
+    summarize_prompt_path: Path
+    summarize_map_prompt_path: Path
+    summarize_batch_chars: int
+    summarize_max_batches: int
+    summarize_parallel_requests: int
     supported_extensions: tuple[str, ...]
 
     @classmethod
@@ -29,11 +35,25 @@ class Settings:
             ollama_model=os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud"),
             embedding_model=os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"),
             temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.2")),
+            ollama_num_predict=int(os.getenv("OLLAMA_NUM_PREDICT", "1024")),
             chunk_size=int(os.getenv("CHUNK_SIZE", "1000")),
             chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "200")),
             retriever_top_k=int(os.getenv("RETRIEVER_TOP_K", "3")),
             data_dir=Path(os.getenv("DATA_DIR", "data")),
             prompt_path=Path(os.getenv("PROMPT_PATH", "prompts/rag_prompt.yaml")),
+            summarize_prompt_path=Path(
+                os.getenv("SUMMARIZE_PROMPT_PATH", "prompts/summarize_prompt.yaml")
+            ),
+            summarize_map_prompt_path=Path(
+                os.getenv(
+                    "SUMMARIZE_MAP_PROMPT_PATH", "prompts/summarize_map_prompt.yaml"
+                )
+            ),
+            summarize_batch_chars=int(os.getenv("SUMMARIZE_BATCH_CHARS", "24000")),
+            summarize_max_batches=int(os.getenv("SUMMARIZE_MAX_BATCHES", "4")),
+            summarize_parallel_requests=int(
+                os.getenv("SUMMARIZE_PARALLEL_REQUESTS", "2")
+            ),
             supported_extensions=(".pdf", ".txt"),
         )
 
