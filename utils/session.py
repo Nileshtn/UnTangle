@@ -34,6 +34,12 @@ async def init_session(thread_id: str | None = None) -> None:
         model_name=settings.ollama_model,
         temperature=settings.temperature,
         prompt_path=str(settings.prompt_path),
+        summarize_prompt_path=str(settings.summarize_prompt_path),
+        summarize_map_prompt_path=str(settings.summarize_map_prompt_path),
+        summarize_batch_chars=settings.summarize_batch_chars,
+        summarize_max_batches=settings.summarize_max_batches,
+        summarize_parallel_requests=settings.summarize_parallel_requests,
+        num_predict=settings.ollama_num_predict,
     )
 
     cl.user_session.set("thread_id", thread_id)
