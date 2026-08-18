@@ -16,6 +16,76 @@ import chainlit as cl
 
 logger = logging.getLogger(__name__)
 
+GENERIC_TITLES = {
+    "",
+    "untitled",
+    "microsoft word - ",
+    "powerpoint presentation",
+}
+
+SKIP_TITLE_PATTERNS = (
+    "journal of",
+    "provided proper attribution",
+    "copyright",
+    "under review",
+    "preprint submitted",
+    "page ",
+    "doi:",
+    "http://",
+    "https://",
+    "all rights reserved",
+)
+
+
+def _normalize_title(text: str) -> str:
+    return " ".join(text.split()).strip()
+
+
+def _is_usable_title(value: str) -> bool:
+    normalized = _normalize_title(value)
+    if not normalized or len(normalized) < 3:
+        return False
+    lowered = normalized.lower()
+    if lowered in GENERIC_TITLES:
+        return False
+    return not any(pattern in lowered for pattern in SKIP_TITLE_PATTERNS)
+
+
+def _title_from_first_page(content: str) -> str | None:
+    candidates: list[str] = []
+    for line in content.splitlines()[:20]:
+        candidate = _normalize_title(line)
+        if _is_usable_title(candidate) and len(candidate) >= 8:
+            candidates.append(candidate)
+
+    if not candidates:
+        return None
+
+    title_parts = [candidates[0]]
+    for candidate in candidates[1:3]:
+        if candidate[0].isupper() and len(candidate) >= 12:
+            title_parts.append(candidate)
+        else:
+            break
+
+    return _normalize_title(" ".join(title_parts))[:255]
+
+
+def extract_document_title(documents: list[Document], filename: str) -> str:
+    for document in documents:
+        for field in ("title", "subject", "keywords"):
+            value = str(document.metadata.get(field) or "")
+            if _is_usable_title(value):
+                return _normalize_title(value)[:255]
+
+    if documents:
+        title = _title_from_first_page(documents[0].page_content)
+        if title:
+            return title
+
+    stem = Path(filename).stem.replace("_", " ").replace("-", " ")
+    return _normalize_title(stem)[:255] or Path(filename).name
+
 
 class FileManager:
     def __init__(self, data_dir: Path):
@@ -103,9 +173,11 @@ class VectorStoreManager:
             loader = TextLoader(element.path, encoding="utf-8")
 
         documents = loader.load()
+        document_title = extract_document_title(documents, element.name)
         splits = self.text_splitter.split_documents(documents)
         for document in splits:
             document.metadata["filename"] = element.name
+            document.metadata["document_title"] = document_title
         return ext, splits
 
     async def add_documents(self, elements: list[cl.File]) -> list[dict]:
@@ -113,8 +185,15 @@ class VectorStoreManager:
         for element in elements:
             ext, content = await cl.make_async(self.extract_content)(element)
             if content:
+                document_title = content[0].metadata.get("document_title", element.name)
                 self.vectorstore.add_documents(content)
-                results.append({"name": element.name, "success": True})
+                results.append(
+                    {
+                        "name": element.name,
+                        "success": True,
+                        "document_title": document_title,
+                    }
+                )
                 logger.info("Indexed document %s", element.name)
             else:
                 results.append(

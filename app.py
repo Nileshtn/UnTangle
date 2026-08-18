@@ -11,6 +11,7 @@ from config import settings
 from utils.session import get_services, init_session
 from utils.settings_ui import apply_chat_settings, send_chat_settings
 from utils.storage import build_storage_client
+from utils.thread_name import set_thread_name_from_first_document
 
 load_dotenv()
 
@@ -134,10 +135,19 @@ async def process_uploads(elements: list[cl.File]) -> None:
     if not file_manager.available_files:
         return
 
+    is_first_document = not file_manager.has_documents()
     results = await vector_store.add_documents(file_manager.available_files)
+    renamed_thread = False
     for result, element in zip(results, file_manager.available_files):
         if result["success"]:
             file_manager.add_db_identifier(element.name)
+            if is_first_document and not renamed_thread:
+                await set_thread_name_from_first_document(
+                    result.get("document_title") or element.name,
+                    thread_id,
+                    is_first_document=True,
+                )
+                renamed_thread = True
             await cl.Message(
                 content=f"Added **{element.name}**.",
                 actions=[
